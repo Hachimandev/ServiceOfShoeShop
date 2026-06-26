@@ -3,6 +3,8 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 
+const socketRoutes = require('./src/routes/socket.routes');
+
 const app = express();
 app.use(cors()); 
 
@@ -15,28 +17,8 @@ const io = new Server(server, {
   }
 });
 
-
-io.on('connection', (socket) => {
-  console.log(`User connected: ${socket.id}`);
-
-
-  socket.on('chat_message', (data) => {
-    console.log(`Message from ${socket.id}:`, data);
-    
- 
-    io.emit('chat_message', {
-      senderId: socket.id,
-      message: data.message,
-      timestamp: new Date().toISOString()
-    });
-  });
-
-
-  socket.on('disconnect', () => {
-    console.log(`User disconnected: ${socket.id}`);
-  });
-});
-
+// Initialize socket routes
+socketRoutes(io);
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'Chat service is running' });
