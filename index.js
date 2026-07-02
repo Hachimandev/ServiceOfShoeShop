@@ -7,6 +7,7 @@ const cors = require('cors');
 const connectDB = require('./src/config/db');
 const socketRoutes = require('./src/routes/socket.routes');
 const userRoutes = require('./src/routes/user.routes');
+const conversationRoutes = require('./src/routes/conversation.routes');
 
 const app = express();
 
@@ -30,6 +31,7 @@ socketRoutes(io);
 
 // Initialize REST routes
 app.use('/api/users', userRoutes(io));
+app.use('/api/conversations', conversationRoutes(io));
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'Chat service is running with MongoDB' });
