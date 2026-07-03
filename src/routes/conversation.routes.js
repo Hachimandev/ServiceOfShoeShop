@@ -11,6 +11,7 @@ module.exports = (io) => {
   });
 
   router.post('/1vs1', conversationController.createOrGet1vs1Conversation);
+  router.post('/group', conversationController.createGroupConversation);
   router.get('/:userId', conversationController.getUserConversations);
 
   return router;

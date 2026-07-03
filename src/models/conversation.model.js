@@ -1,8 +1,16 @@
 const mongoose = require('mongoose');
 
 const conversationSchema = new mongoose.Schema({
+  name: {
+    type: String,
+  },
+  admin: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
   participants: [{
     type: mongoose.Schema.Types.ObjectId,
+
     ref: 'User',
     required: true
   }],
