@@ -16,42 +16,53 @@ class ChatController {
       
       const { senderId, receiverId, message, conversationId } = data;
       let targetConversationId = conversationId;
+      let targetConversation = null;
 
-      // If conversationId is not provided, try to find or create a 1vs1 conversation
-      if (!targetConversationId && senderId && receiverId) {
-        let conversation = await Conversation.findOne({
+      if (targetConversationId) {
+        targetConversation = await Conversation.findById(targetConversationId);
+      } else if (senderId && receiverId) {
+        targetConversation = await Conversation.findOne({
           type: '1vs1',
           participants: { $all: [senderId, receiverId], $size: 2 }
         });
 
-        if (!conversation) {
-          conversation = await Conversation.create({
+        if (!targetConversation) {
+          targetConversation = await Conversation.create({
             participants: [senderId, receiverId],
             type: '1vs1'
           });
         }
-        targetConversationId = conversation._id;
+        targetConversationId = targetConversation._id;
+      }
+      
+      if (!targetConversationId) {
+        return socket.emit('error', { message: 'Invalid conversation data' });
       }
       
       // Save to MongoDB
       const newMessage = await Message.create({
         senderId,
-        receiverId,
+        receiverId: receiverId || null,
         message,
         conversationId: targetConversationId
       });
 
       // Update the last message of the conversation
-      if (targetConversationId) {
-        await Conversation.findByIdAndUpdate(targetConversationId, {
-          lastMessage: newMessage._id
-        });
-      }
+      await Conversation.findByIdAndUpdate(targetConversationId, {
+        lastMessage: newMessage._id
+      });
 
-      // Emit to receiver (assuming receiverId is the socket.id or they join a room with their userId)
-      // Usually, users join a room named by their userId when they connect
-      this.io.to(receiverId).emit('chat_message', newMessage);
-      // Also emit to sender so their UI can update if needed
+      // Emit messages
+      if (targetConversation && targetConversation.type === 'group') {
+        targetConversation.participants.forEach(participantId => {
+          if (participantId.toString() !== senderId.toString()) {
+            this.io.to(participantId.toString()).emit('chat_message', newMessage);
+          }
+        });
+      } else if (receiverId) {
+        this.io.to(receiverId).emit('chat_message', newMessage);
+      }
+      
       socket.emit('chat_message', newMessage);
 
     } catch (error) {

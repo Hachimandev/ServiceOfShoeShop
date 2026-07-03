@@ -45,6 +45,37 @@ class ConversationController {
     }
   }
 
+  // Create group conversation
+  async createGroupConversation(req, res) {
+    try {
+      const { name, participants, adminId } = req.body;
+
+      if (!name || !participants || participants.length < 2) {
+        return res.status(400).json({ message: 'Name and at least 2 participants are required' });
+      }
+
+      // Check if all users exist
+      const users = await User.find({ _id: { $in: participants } });
+      if (users.length !== participants.length) {
+        return res.status(404).json({ message: 'One or more users not found' });
+      }
+
+      const conversation = await Conversation.create({
+        name,
+        participants,
+        admin: adminId || participants[0], // default to first participant if no adminId provided
+        type: 'group'
+      });
+
+      await conversation.populate('participants', 'username');
+
+      res.status(201).json(conversation);
+    } catch (error) {
+      console.error('Error in createGroupConversation:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
   // Get user's conversations
   async getUserConversations(req, res) {
     try {
