@@ -13,6 +13,8 @@ module.exports = (io) => {
   router.post('/1vs1', conversationController.createOrGet1vs1Conversation);
   router.post('/group', conversationController.createGroupConversation);
   router.get('/:userId', conversationController.getUserConversations);
+  router.post('/message', conversationController.sendMessage);
+  router.get('/:conversationId/messages', conversationController.getMessages);
 
   return router;
 };

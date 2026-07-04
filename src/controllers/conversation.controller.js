@@ -1,5 +1,6 @@
 const Conversation = require('../models/conversation.model');
 const User = require('../models/user.model');
+const Message = require('../models/message.model');
 
 class ConversationController {
   // Create or get 1vs1 conversation
@@ -91,6 +92,82 @@ class ConversationController {
       res.status(200).json(conversations);
     } catch (error) {
       console.error('Error in getUserConversations:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Send a message via REST
+  async sendMessage(req, res) {
+    try {
+      const { senderId, receiverId, message, conversationId } = req.body;
+      
+      let targetConversationId = conversationId;
+      let targetConversation = null;
+
+      if (targetConversationId) {
+        targetConversation = await Conversation.findById(targetConversationId);
+      } else if (senderId && receiverId) {
+        targetConversation = await Conversation.findOne({
+          type: '1vs1',
+          participants: { $all: [senderId, receiverId], $size: 2 }
+        });
+
+        if (!targetConversation) {
+          targetConversation = await Conversation.create({
+            participants: [senderId, receiverId],
+            type: '1vs1'
+          });
+        }
+        targetConversationId = targetConversation._id;
+      }
+      
+      if (!targetConversationId) {
+        return res.status(400).json({ message: 'Invalid conversation data' });
+      }
+
+      // Save to MongoDB
+      const newMessage = await Message.create({
+        senderId,
+        receiverId: receiverId || null,
+        message,
+        conversationId: targetConversationId
+      });
+
+      // Update the last message of the conversation
+      await Conversation.findByIdAndUpdate(targetConversationId, {
+        lastMessage: newMessage._id
+      });
+
+      // Emit messages
+      if (targetConversation && targetConversation.type === 'group') {
+        targetConversation.participants.forEach(participantId => {
+          if (participantId.toString() !== senderId.toString() && req.io) {
+            req.io.to(participantId.toString()).emit('chat_message', newMessage);
+          }
+        });
+      } else if (receiverId && req.io) {
+        req.io.to(receiverId.toString()).emit('chat_message', newMessage);
+      }
+
+      res.status(201).json(newMessage);
+    } catch (error) {
+      console.error('Error in sendMessage:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Get messages for a conversation
+  async getMessages(req, res) {
+    try {
+      const { conversationId } = req.params;
+
+      const messages = await Message.find({ conversationId })
+        .populate('senderId', 'username')
+        .sort({ createdAt: 1 });
+
+      res.status(200).json(messages);
+    } catch (error) {
+      console.error('Error in getMessages:', error);
       res.status(500).json({ error: error.message });
     }
   }
