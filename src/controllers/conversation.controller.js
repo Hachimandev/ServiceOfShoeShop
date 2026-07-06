@@ -1,6 +1,7 @@
 const Conversation = require('../models/conversation.model');
 const User = require('../models/user.model');
 const Message = require('../models/message.model');
+const { uploadToS3 } = require('../config/s3');
 
 class ConversationController {
   // Create or get 1vs1 conversation
@@ -152,6 +153,75 @@ class ConversationController {
       res.status(201).json(newMessage);
     } catch (error) {
       console.error('Error in sendMessage:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Send an image message via REST
+  async sendImageMessage(req, res) {
+    try {
+      const { senderId, receiverId, conversationId } = req.body;
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).json({ message: 'Image file is required' });
+      }
+
+      let targetConversationId = conversationId;
+      let targetConversation = null;
+
+      if (targetConversationId) {
+        targetConversation = await Conversation.findById(targetConversationId);
+      } else if (senderId && receiverId) {
+        targetConversation = await Conversation.findOne({
+          type: '1vs1',
+          participants: { $all: [senderId, receiverId], $size: 2 }
+        });
+
+        if (!targetConversation) {
+          targetConversation = await Conversation.create({
+            participants: [senderId, receiverId],
+            type: '1vs1'
+          });
+        }
+        targetConversationId = targetConversation._id;
+      }
+      
+      if (!targetConversationId) {
+        return res.status(400).json({ message: 'Invalid conversation data' });
+      }
+
+      // Upload image to S3
+      const imageUrl = await uploadToS3(file.buffer, file.originalname, file.mimetype);
+
+      // Save to MongoDB
+      const newMessage = await Message.create({
+        senderId,
+        receiverId: receiverId || null,
+        message: imageUrl,
+        type: 'image',
+        conversationId: targetConversationId
+      });
+
+      // Update the last message of the conversation
+      await Conversation.findByIdAndUpdate(targetConversationId, {
+        lastMessage: newMessage._id
+      });
+
+      // Emit messages
+      if (targetConversation && targetConversation.type === 'group') {
+        targetConversation.participants.forEach(participantId => {
+          if (participantId.toString() !== senderId.toString() && req.io) {
+            req.io.to(participantId.toString()).emit('chat_message', newMessage);
+          }
+        });
+      } else if (receiverId && req.io) {
+        req.io.to(receiverId.toString()).emit('chat_message', newMessage);
+      }
+
+      res.status(201).json(newMessage);
+    } catch (error) {
+      console.error('Error in sendImageMessage:', error);
       res.status(500).json({ error: error.message });
     }
   }
