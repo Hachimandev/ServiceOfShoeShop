@@ -4,7 +4,7 @@ const multer = require('multer');
 const storage = multer.memoryStorage();
 
 // Accept only image files
-const fileFilter = (req, file, cb) => {
+const imageFileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith('image/')) {
     cb(null, true);
   } else {
@@ -12,12 +12,28 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-const upload = multer({ 
+// Accept all files
+const generalFileFilter = (req, file, cb) => {
+  cb(null, true);
+};
+
+const uploadImage = multer({ 
   storage,
-  fileFilter,
+  fileFilter: imageFileFilter,
   limits: {
     fileSize: 5 * 1024 * 1024 // 5 MB limit
   }
 });
 
-module.exports = upload;
+const uploadFile = multer({
+  storage,
+  fileFilter: generalFileFilter,
+  limits: {
+    fileSize: 20 * 1024 * 1024 // 20 MB limit
+  }
+});
+
+module.exports = {
+  uploadImage,
+  uploadFile
+};
