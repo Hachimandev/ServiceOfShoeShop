@@ -227,6 +227,75 @@ class ConversationController {
   }
 
   // Get messages for a conversation
+  async sendFileMessage(req, res) {
+    try {
+      const { senderId, receiverId, conversationId } = req.body;
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).json({ message: 'File is required' });
+      }
+
+      let targetConversationId = conversationId;
+      let targetConversation = null;
+
+      if (targetConversationId) {
+        targetConversation = await Conversation.findById(targetConversationId);
+      } else if (senderId && receiverId) {
+        targetConversation = await Conversation.findOne({
+          type: '1vs1',
+          participants: { $all: [senderId, receiverId], $size: 2 }
+        });
+
+        if (!targetConversation) {
+          targetConversation = await Conversation.create({
+            participants: [senderId, receiverId],
+            type: '1vs1'
+          });
+        }
+        targetConversationId = targetConversation._id;
+      }
+      
+      if (!targetConversationId) {
+        return res.status(400).json({ message: 'Invalid conversation data' });
+      }
+
+      // Upload file to S3
+      const fileUrl = await uploadToS3(file.buffer, file.originalname, file.mimetype, 'chat-files');
+
+      // Save to MongoDB
+      const newMessage = await Message.create({
+        senderId,
+        receiverId: receiverId || null,
+        message: fileUrl,
+        type: 'file',
+        conversationId: targetConversationId
+      });
+
+      // Update the last message of the conversation
+      await Conversation.findByIdAndUpdate(targetConversationId, {
+        lastMessage: newMessage._id
+      });
+
+      // Emit messages
+      if (targetConversation && targetConversation.type === 'group') {
+        targetConversation.participants.forEach(participantId => {
+          if (participantId.toString() !== senderId.toString() && req.io) {
+            req.io.to(participantId.toString()).emit('chat_message', newMessage);
+          }
+        });
+      } else if (receiverId && req.io) {
+        req.io.to(receiverId.toString()).emit('chat_message', newMessage);
+      }
+
+      res.status(201).json({ ...newMessage._doc, originalName: file.originalname });
+    } catch (error) {
+      console.error('Error in sendFileMessage:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Get messages for a conversation
   async getMessages(req, res) {
     try {
       const { conversationId } = req.params;
