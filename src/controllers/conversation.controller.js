@@ -102,7 +102,12 @@ class ConversationController {
     try {
       const { senderId, receiverId, message, conversationId } = req.body;
       
+      if (message && message.length > 1000) {
+        return res.status(400).json({ message: 'Tin nhắn vượt quá giới hạn 1000 ký tự' });
+      }
+
       let targetConversationId = conversationId;
+
       let targetConversation = null;
 
       if (targetConversationId) {
@@ -161,10 +166,14 @@ class ConversationController {
   async sendImageMessage(req, res) {
     try {
       const { senderId, receiverId, conversationId } = req.body;
-      const file = req.file;
+      const files = req.files || (req.file ? [req.file] : []);
 
-      if (!file) {
-        return res.status(400).json({ message: 'Image file is required' });
+      if (files.length === 0) {
+        return res.status(400).json({ message: 'Ít nhất một file ảnh là bắt buộc' });
+      }
+      
+      if (files.length > 5) {
+        return res.status(400).json({ message: 'Tối đa 5 ảnh được phép trong một lần gửi' });
       }
 
       let targetConversationId = conversationId;
@@ -188,38 +197,46 @@ class ConversationController {
       }
       
       if (!targetConversationId) {
-        return res.status(400).json({ message: 'Invalid conversation data' });
+        return res.status(400).json({ message: 'Dữ liệu cuộc hội thoại không hợp lệ' });
       }
 
-      // Upload image to S3
-      const imageUrl = await uploadToS3(file.buffer, file.originalname, file.mimetype);
+      const newMessages = [];
 
-      // Save to MongoDB
-      const newMessage = await Message.create({
-        senderId,
-        receiverId: receiverId || null,
-        message: imageUrl,
-        type: 'image',
-        conversationId: targetConversationId
-      });
+      for (const file of files) {
+        // Upload image to S3
+        const imageUrl = await uploadToS3(file.buffer, file.originalname, file.mimetype);
+
+        // Save to MongoDB
+        const newMessage = await Message.create({
+          senderId,
+          receiverId: receiverId || null,
+          message: imageUrl,
+          type: 'image',
+          conversationId: targetConversationId
+        });
+        
+        newMessages.push(newMessage);
+      }
 
       // Update the last message of the conversation
       await Conversation.findByIdAndUpdate(targetConversationId, {
-        lastMessage: newMessage._id
+        lastMessage: newMessages[newMessages.length - 1]._id
       });
 
       // Emit messages
-      if (targetConversation && targetConversation.type === 'group') {
-        targetConversation.participants.forEach(participantId => {
-          if (participantId.toString() !== senderId.toString() && req.io) {
-            req.io.to(participantId.toString()).emit('chat_message', newMessage);
-          }
-        });
-      } else if (receiverId && req.io) {
-        req.io.to(receiverId.toString()).emit('chat_message', newMessage);
+      for (const newMessage of newMessages) {
+        if (targetConversation && targetConversation.type === 'group') {
+          targetConversation.participants.forEach(participantId => {
+            if (participantId.toString() !== senderId.toString() && req.io) {
+              req.io.to(participantId.toString()).emit('chat_message', newMessage);
+            }
+          });
+        } else if (receiverId && req.io) {
+          req.io.to(receiverId.toString()).emit('chat_message', newMessage);
+        }
       }
 
-      res.status(201).json(newMessage);
+      res.status(201).json(newMessages.length === 1 ? newMessages[0] : newMessages);
     } catch (error) {
       console.error('Error in sendImageMessage:', error);
       res.status(500).json({ error: error.message });
@@ -230,10 +247,14 @@ class ConversationController {
   async sendFileMessage(req, res) {
     try {
       const { senderId, receiverId, conversationId } = req.body;
-      const file = req.file;
+      const files = req.files || (req.file ? [req.file] : []);
 
-      if (!file) {
-        return res.status(400).json({ message: 'File is required' });
+      if (files.length === 0) {
+        return res.status(400).json({ message: 'Ít nhất một file là bắt buộc' });
+      }
+
+      if (files.length > 5) {
+        return res.status(400).json({ message: 'Tối đa 5 file được phép trong một lần gửi' });
       }
 
       let targetConversationId = conversationId;
@@ -257,38 +278,46 @@ class ConversationController {
       }
       
       if (!targetConversationId) {
-        return res.status(400).json({ message: 'Invalid conversation data' });
+        return res.status(400).json({ message: 'Dữ liệu cuộc hội thoại không hợp lệ' });
       }
 
-      // Upload file to S3
-      const fileUrl = await uploadToS3(file.buffer, file.originalname, file.mimetype, 'chat-files');
+      const newMessages = [];
 
-      // Save to MongoDB
-      const newMessage = await Message.create({
-        senderId,
-        receiverId: receiverId || null,
-        message: fileUrl,
-        type: 'file',
-        conversationId: targetConversationId
-      });
+      for (const file of files) {
+        // Upload file to S3
+        const fileUrl = await uploadToS3(file.buffer, file.originalname, file.mimetype, 'chat-files');
+
+        // Save to MongoDB
+        const newMessage = await Message.create({
+          senderId,
+          receiverId: receiverId || null,
+          message: fileUrl,
+          type: 'file',
+          conversationId: targetConversationId
+        });
+        
+        newMessages.push({ ...newMessage._doc, originalName: file.originalname });
+      }
 
       // Update the last message of the conversation
       await Conversation.findByIdAndUpdate(targetConversationId, {
-        lastMessage: newMessage._id
+        lastMessage: newMessages[newMessages.length - 1]._id
       });
 
       // Emit messages
-      if (targetConversation && targetConversation.type === 'group') {
-        targetConversation.participants.forEach(participantId => {
-          if (participantId.toString() !== senderId.toString() && req.io) {
-            req.io.to(participantId.toString()).emit('chat_message', newMessage);
-          }
-        });
-      } else if (receiverId && req.io) {
-        req.io.to(receiverId.toString()).emit('chat_message', newMessage);
+      for (const newMessage of newMessages) {
+        if (targetConversation && targetConversation.type === 'group') {
+          targetConversation.participants.forEach(participantId => {
+            if (participantId.toString() !== senderId.toString() && req.io) {
+              req.io.to(participantId.toString()).emit('chat_message', newMessage);
+            }
+          });
+        } else if (receiverId && req.io) {
+          req.io.to(receiverId.toString()).emit('chat_message', newMessage);
+        }
       }
 
-      res.status(201).json({ ...newMessage._doc, originalName: file.originalname });
+      res.status(201).json(newMessages.length === 1 ? newMessages[0] : newMessages);
     } catch (error) {
       console.error('Error in sendFileMessage:', error);
       res.status(500).json({ error: error.message });
