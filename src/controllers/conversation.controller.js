@@ -4,6 +4,49 @@ const Message = require('../models/message.model');
 const { uploadToS3 } = require('../config/s3');
 
 class ConversationController {
+  constructor() {
+    this.pinMessage = this.pinMessage.bind(this);
+    this.unpinMessage = this.unpinMessage.bind(this);
+    this.getPinnedMessages = this.getPinnedMessages.bind(this);
+  }
+
+  isConversationParticipant(conversation, userId) {
+    return conversation.participants.some(participantId => participantId.toString() === userId.toString());
+  }
+
+  emitToConversation(io, conversation, event, payload) {
+    if (!io || !conversation) {
+      return;
+    }
+
+    conversation.participants.forEach(participantId => {
+      io.to(participantId.toString()).emit(event, payload);
+    });
+  }
+
+  async populatePinnedMessage(message) {
+    await message.populate([
+      { path: 'senderId', select: 'username' },
+      { path: 'pinnedBy', select: 'username' }
+    ]);
+
+    return message;
+  }
+
+  async findMessageConversation(messageId) {
+    const message = await Message.findById(messageId);
+
+    if (!message) {
+      return { message: null, conversation: null };
+    }
+
+    const conversation = message.conversationId
+      ? await Conversation.findById(message.conversationId)
+      : null;
+
+    return { message, conversation };
+  }
+
   // Create or get 1vs1 conversation
   async createOrGet1vs1Conversation(req, res) {
     try {
@@ -336,6 +379,125 @@ class ConversationController {
       res.status(200).json(messages);
     } catch (error) {
       console.error('Error in getMessages:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Pin a message in a conversation
+  async pinMessage(req, res) {
+    try {
+      const { messageId } = req.params;
+      const { userId } = req.body;
+
+      if (!userId) {
+        return res.status(400).json({ message: 'userId is required' });
+      }
+
+      const { message, conversation } = await this.findMessageConversation(messageId);
+
+      if (!message) {
+        return res.status(404).json({ message: 'Message not found' });
+      }
+
+      if (!conversation) {
+        return res.status(404).json({ message: 'Conversation not found' });
+      }
+
+      if (!this.isConversationParticipant(conversation, userId)) {
+        return res.status(403).json({ message: 'User is not a participant of this conversation' });
+      }
+
+      if (!message.isPinned) {
+        message.isPinned = true;
+        message.pinnedBy = userId;
+        message.pinnedAt = new Date();
+        await message.save();
+      }
+
+      const pinnedMessage = await this.populatePinnedMessage(message);
+
+      this.emitToConversation(req.io, conversation, 'message_pinned', pinnedMessage);
+
+      res.status(200).json(pinnedMessage);
+    } catch (error) {
+      console.error('Error in pinMessage:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Unpin a message in a conversation
+  async unpinMessage(req, res) {
+    try {
+      const { messageId } = req.params;
+      const { userId } = req.body;
+
+      if (!userId) {
+        return res.status(400).json({ message: 'userId is required' });
+      }
+
+      const { message, conversation } = await this.findMessageConversation(messageId);
+
+      if (!message) {
+        return res.status(404).json({ message: 'Message not found' });
+      }
+
+      if (!conversation) {
+        return res.status(404).json({ message: 'Conversation not found' });
+      }
+
+      if (!this.isConversationParticipant(conversation, userId)) {
+        return res.status(403).json({ message: 'User is not a participant of this conversation' });
+      }
+
+      if (message.isPinned) {
+        message.isPinned = false;
+        message.pinnedBy = null;
+        message.pinnedAt = null;
+        await message.save();
+      }
+
+      const unpinnedMessage = await this.populatePinnedMessage(message);
+
+      this.emitToConversation(req.io, conversation, 'message_unpinned', unpinnedMessage);
+
+      res.status(200).json(unpinnedMessage);
+    } catch (error) {
+      console.error('Error in unpinMessage:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Get pinned messages for a conversation
+  async getPinnedMessages(req, res) {
+    try {
+      const { conversationId } = req.params;
+      const { userId } = req.query;
+
+      if (!userId) {
+        return res.status(400).json({ message: 'userId query parameter is required' });
+      }
+
+      const conversation = await Conversation.findById(conversationId);
+
+      if (!conversation) {
+        return res.status(404).json({ message: 'Conversation not found' });
+      }
+
+      if (!this.isConversationParticipant(conversation, userId)) {
+        return res.status(403).json({ message: 'User is not a participant of this conversation' });
+      }
+
+      const messages = await Message.find({
+        conversationId,
+        isPinned: true
+      })
+        .populate('senderId', 'username')
+        .populate('pinnedBy', 'username')
+        .sort({ pinnedAt: -1 });
+
+      res.status(200).json(messages);
+    } catch (error) {
+      console.error('Error in getPinnedMessages:', error);
       res.status(500).json({ error: error.message });
     }
   }
