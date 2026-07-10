@@ -10,6 +10,39 @@ class ChatController {
     console.log(`User connected: ${socket.id}`);
   }
 
+  isConversationParticipant(conversation, userId) {
+    return conversation.participants.some(participantId => participantId.toString() === userId.toString());
+  }
+
+  emitToConversation(conversation, event, payload) {
+    conversation.participants.forEach(participantId => {
+      this.io.to(participantId.toString()).emit(event, payload);
+    });
+  }
+
+  async populatePinnedMessage(message) {
+    await message.populate([
+      { path: 'senderId', select: 'username' },
+      { path: 'pinnedBy', select: 'username' }
+    ]);
+
+    return message;
+  }
+
+  async findMessageConversation(messageId) {
+    const message = await Message.findById(messageId);
+
+    if (!message) {
+      return { message: null, conversation: null };
+    }
+
+    const conversation = message.conversationId
+      ? await Conversation.findById(message.conversationId)
+      : null;
+
+    return { message, conversation };
+  }
+
   async handleChatMessage(socket, data) {
     try {
       console.log(`Message from ${socket.id}:`, data);
@@ -69,6 +102,80 @@ class ChatController {
     } catch (error) {
       console.error('Error saving message:', error);
       socket.emit('error', { message: 'Failed to send message' });
+    }
+  }
+
+  async handlePinMessage(socket, data) {
+    try {
+      const { messageId, userId } = data;
+
+      if (!messageId || !userId) {
+        return socket.emit('error', { message: 'messageId and userId are required' });
+      }
+
+      const { message, conversation } = await this.findMessageConversation(messageId);
+
+      if (!message) {
+        return socket.emit('error', { message: 'Message not found' });
+      }
+
+      if (!conversation) {
+        return socket.emit('error', { message: 'Conversation not found' });
+      }
+
+      if (!this.isConversationParticipant(conversation, userId)) {
+        return socket.emit('error', { message: 'User is not a participant of this conversation' });
+      }
+
+      if (!message.isPinned) {
+        message.isPinned = true;
+        message.pinnedBy = userId;
+        message.pinnedAt = new Date();
+        await message.save();
+      }
+
+      const pinnedMessage = await this.populatePinnedMessage(message);
+      this.emitToConversation(conversation, 'message_pinned', pinnedMessage);
+    } catch (error) {
+      console.error('Error pinning message:', error);
+      socket.emit('error', { message: 'Failed to pin message' });
+    }
+  }
+
+  async handleUnpinMessage(socket, data) {
+    try {
+      const { messageId, userId } = data;
+
+      if (!messageId || !userId) {
+        return socket.emit('error', { message: 'messageId and userId are required' });
+      }
+
+      const { message, conversation } = await this.findMessageConversation(messageId);
+
+      if (!message) {
+        return socket.emit('error', { message: 'Message not found' });
+      }
+
+      if (!conversation) {
+        return socket.emit('error', { message: 'Conversation not found' });
+      }
+
+      if (!this.isConversationParticipant(conversation, userId)) {
+        return socket.emit('error', { message: 'User is not a participant of this conversation' });
+      }
+
+      if (message.isPinned) {
+        message.isPinned = false;
+        message.pinnedBy = null;
+        message.pinnedAt = null;
+        await message.save();
+      }
+
+      const unpinnedMessage = await this.populatePinnedMessage(message);
+      this.emitToConversation(conversation, 'message_unpinned', unpinnedMessage);
+    } catch (error) {
+      console.error('Error unpinning message:', error);
+      socket.emit('error', { message: 'Failed to unpin message' });
     }
   }
 

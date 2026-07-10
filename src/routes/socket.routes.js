@@ -18,6 +18,14 @@ module.exports = (io) => {
       chatController.handleChatMessage(socket, data);
     });
 
+    socket.on('pin_message', (data) => {
+      chatController.handlePinMessage(socket, data);
+    });
+
+    socket.on('unpin_message', (data) => {
+      chatController.handleUnpinMessage(socket, data);
+    });
+
     // Socket event for sending friend request
     socket.on('send_friend_request', async (data) => {
       try {

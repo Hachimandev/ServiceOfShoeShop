@@ -24,8 +24,23 @@ const messageSchema = new mongoose.Schema({
     type: String,
     enum: ['text', 'image', 'emoji', 'file', 'video', 'audio'],
     default: 'text'
+  },
+  isPinned: {
+    type: Boolean,
+    default: false
+  },
+  pinnedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  pinnedAt: {
+    type: Date,
+    default: null
   }
 }, { timestamps: true });
+
+messageSchema.index({ conversationId: 1, isPinned: 1, pinnedAt: -1 });
 
 const Message = mongoose.model('Message', messageSchema);
 module.exports = Message;
