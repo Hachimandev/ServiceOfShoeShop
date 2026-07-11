@@ -26,6 +26,14 @@ module.exports = (io) => {
       chatController.handleUnpinMessage(socket, data);
     });
 
+    socket.on('add_reaction', (data) => {
+      chatController.handleAddReaction(socket, data);
+    });
+
+    socket.on('remove_reaction', (data) => {
+      chatController.handleRemoveReaction(socket, data);
+    });
+
     // Socket event for sending friend request
     socket.on('send_friend_request', async (data) => {
       try {

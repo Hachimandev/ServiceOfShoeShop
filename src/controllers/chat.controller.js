@@ -179,6 +179,93 @@ class ChatController {
     }
   }
 
+  async handleAddReaction(socket, data) {
+    try {
+      const { messageId, userId, emoji } = data;
+
+      if (!messageId || !userId || !emoji) {
+        return socket.emit('error', { message: 'messageId, userId, and emoji are required' });
+      }
+
+      const { message, conversation } = await this.findMessageConversation(messageId);
+
+      if (!message) {
+        return socket.emit('error', { message: 'Message not found' });
+      }
+
+      if (!conversation) {
+        return socket.emit('error', { message: 'Conversation not found' });
+      }
+
+      if (!this.isConversationParticipant(conversation, userId)) {
+        return socket.emit('error', { message: 'User is not a participant of this conversation' });
+      }
+
+      // Check if user already reacted with this emoji
+      const existingReactionIndex = message.reactions.findIndex(
+        r => r.userId.toString() === userId.toString() && r.emoji === emoji
+      );
+
+      if (existingReactionIndex === -1) {
+        message.reactions.push({ userId, emoji });
+        await message.save();
+      }
+
+      this.emitToConversation(conversation, 'reaction_added', {
+        messageId,
+        userId,
+        emoji,
+        reactions: message.reactions
+      });
+    } catch (error) {
+      console.error('Error adding reaction:', error);
+      socket.emit('error', { message: 'Failed to add reaction' });
+    }
+  }
+
+  async handleRemoveReaction(socket, data) {
+    try {
+      const { messageId, userId, emoji } = data;
+
+      if (!messageId || !userId || !emoji) {
+        return socket.emit('error', { message: 'messageId, userId, and emoji are required' });
+      }
+
+      const { message, conversation } = await this.findMessageConversation(messageId);
+
+      if (!message) {
+        return socket.emit('error', { message: 'Message not found' });
+      }
+
+      if (!conversation) {
+        return socket.emit('error', { message: 'Conversation not found' });
+      }
+
+      if (!this.isConversationParticipant(conversation, userId)) {
+        return socket.emit('error', { message: 'User is not a participant of this conversation' });
+      }
+
+      const initialLength = message.reactions.length;
+      message.reactions = message.reactions.filter(
+        r => !(r.userId.toString() === userId.toString() && r.emoji === emoji)
+      );
+
+      if (message.reactions.length !== initialLength) {
+        await message.save();
+      }
+
+      this.emitToConversation(conversation, 'reaction_removed', {
+        messageId,
+        userId,
+        emoji,
+        reactions: message.reactions
+      });
+    } catch (error) {
+      console.error('Error removing reaction:', error);
+      socket.emit('error', { message: 'Failed to remove reaction' });
+    }
+  }
+
   handleDisconnect(socket) {
     console.log(`User disconnected: ${socket.id}`);
   }

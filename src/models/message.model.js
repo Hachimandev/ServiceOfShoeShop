@@ -37,7 +37,18 @@ const messageSchema = new mongoose.Schema({
   pinnedAt: {
     type: Date,
     default: null
-  }
+  },
+  reactions: [{
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    emoji: {
+      type: String,
+      required: true
+    }
+  }]
 }, { timestamps: true });
 
 messageSchema.index({ conversationId: 1, isPinned: 1, pinnedAt: -1 });
