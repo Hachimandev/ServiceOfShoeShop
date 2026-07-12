@@ -8,6 +8,8 @@ class ConversationController {
     this.pinMessage = this.pinMessage.bind(this);
     this.unpinMessage = this.unpinMessage.bind(this);
     this.getPinnedMessages = this.getPinnedMessages.bind(this);
+    this.addReaction = this.addReaction.bind(this);
+    this.removeReaction = this.removeReaction.bind(this);
   }
 
   isConversationParticipant(conversation, userId) {
@@ -498,6 +500,101 @@ class ConversationController {
       res.status(200).json(messages);
     } catch (error) {
       console.error('Error in getPinnedMessages:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Add a reaction to a message
+  async addReaction(req, res) {
+    try {
+      const { messageId } = req.params;
+      const { userId, emoji } = req.body;
+
+      if (!userId || !emoji) {
+        return res.status(400).json({ message: 'userId and emoji are required' });
+      }
+
+      const { message, conversation } = await this.findMessageConversation(messageId);
+
+      if (!message) {
+        return res.status(404).json({ message: 'Message not found' });
+      }
+
+      if (!conversation) {
+        return res.status(404).json({ message: 'Conversation not found' });
+      }
+
+      if (!this.isConversationParticipant(conversation, userId)) {
+        return res.status(403).json({ message: 'User is not a participant of this conversation' });
+      }
+
+      // Check if user already reacted with this emoji
+      const existingReactionIndex = message.reactions.findIndex(
+        r => r.userId.toString() === userId.toString() && r.emoji === emoji
+      );
+
+      if (existingReactionIndex === -1) {
+        message.reactions.push({ userId, emoji });
+        await message.save();
+      }
+
+      this.emitToConversation(req.io, conversation, 'reaction_added', {
+        messageId,
+        userId,
+        emoji,
+        reactions: message.reactions
+      });
+
+      res.status(200).json(message);
+    } catch (error) {
+      console.error('Error in addReaction:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Remove a reaction from a message
+  async removeReaction(req, res) {
+    try {
+      const { messageId } = req.params;
+      const { userId, emoji } = req.body;
+
+      if (!userId || !emoji) {
+        return res.status(400).json({ message: 'userId and emoji are required' });
+      }
+
+      const { message, conversation } = await this.findMessageConversation(messageId);
+
+      if (!message) {
+        return res.status(404).json({ message: 'Message not found' });
+      }
+
+      if (!conversation) {
+        return res.status(404).json({ message: 'Conversation not found' });
+      }
+
+      if (!this.isConversationParticipant(conversation, userId)) {
+        return res.status(403).json({ message: 'User is not a participant of this conversation' });
+      }
+
+      const initialLength = message.reactions.length;
+      message.reactions = message.reactions.filter(
+        r => !(r.userId.toString() === userId.toString() && r.emoji === emoji)
+      );
+
+      if (message.reactions.length !== initialLength) {
+        await message.save();
+      }
+
+      this.emitToConversation(req.io, conversation, 'reaction_removed', {
+        messageId,
+        userId,
+        emoji,
+        reactions: message.reactions
+      });
+
+      res.status(200).json(message);
+    } catch (error) {
+      console.error('Error in removeReaction:', error);
       res.status(500).json({ error: error.message });
     }
   }
