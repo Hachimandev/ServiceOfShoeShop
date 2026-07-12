@@ -19,6 +19,8 @@ module.exports = (io) => {
   router.post('/message/file', uploadFile.array('file', 5), handleUploadError, conversationController.sendFileMessage);
   router.patch('/message/:messageId/pin', conversationController.pinMessage);
   router.patch('/message/:messageId/unpin', conversationController.unpinMessage);
+  router.post('/message/:messageId/reaction', conversationController.addReaction);
+  router.delete('/message/:messageId/reaction', conversationController.removeReaction);
   router.get('/:conversationId/pinned-messages', conversationController.getPinnedMessages);
   router.get('/:conversationId/messages', conversationController.getMessages);
 
