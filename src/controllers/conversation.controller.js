@@ -508,10 +508,10 @@ class ConversationController {
   async addReaction(req, res) {
     try {
       const { messageId } = req.params;
-      const { userId, emoji } = req.body;
+      const { userId, emoji, icon } = req.body;
 
-      if (!userId || !emoji) {
-        return res.status(400).json({ message: 'userId and emoji are required' });
+      if (!userId || (!emoji && !icon)) {
+        return res.status(400).json({ message: 'userId and either emoji or icon are required' });
       }
 
       const { message, conversation } = await this.findMessageConversation(messageId);
@@ -528,13 +528,14 @@ class ConversationController {
         return res.status(403).json({ message: 'User is not a participant of this conversation' });
       }
 
-      // Check if user already reacted with this emoji
+      // Check if user already reacted with this emoji or icon
       const existingReactionIndex = message.reactions.findIndex(
-        r => r.userId.toString() === userId.toString() && r.emoji === emoji
+        r => r.userId.toString() === userId.toString() && 
+             ((emoji && r.emoji === emoji) || (icon && r.icon === icon))
       );
 
       if (existingReactionIndex === -1) {
-        message.reactions.push({ userId, emoji });
+        message.reactions.push({ userId, emoji, icon });
         await message.save();
       }
 
@@ -542,6 +543,7 @@ class ConversationController {
         messageId,
         userId,
         emoji,
+        icon,
         reactions: message.reactions
       });
 
@@ -556,10 +558,10 @@ class ConversationController {
   async removeReaction(req, res) {
     try {
       const { messageId } = req.params;
-      const { userId, emoji } = req.body;
+      const { userId, emoji, icon } = req.body;
 
-      if (!userId || !emoji) {
-        return res.status(400).json({ message: 'userId and emoji are required' });
+      if (!userId || (!emoji && !icon)) {
+        return res.status(400).json({ message: 'userId and either emoji or icon are required' });
       }
 
       const { message, conversation } = await this.findMessageConversation(messageId);
@@ -578,7 +580,8 @@ class ConversationController {
 
       const initialLength = message.reactions.length;
       message.reactions = message.reactions.filter(
-        r => !(r.userId.toString() === userId.toString() && r.emoji === emoji)
+        r => !(r.userId.toString() === userId.toString() && 
+               ((emoji && r.emoji === emoji) || (icon && r.icon === icon)))
       );
 
       if (message.reactions.length !== initialLength) {
@@ -589,6 +592,7 @@ class ConversationController {
         messageId,
         userId,
         emoji,
+        icon,
         reactions: message.reactions
       });
 

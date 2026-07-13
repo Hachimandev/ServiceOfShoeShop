@@ -181,10 +181,10 @@ class ChatController {
 
   async handleAddReaction(socket, data) {
     try {
-      const { messageId, userId, emoji } = data;
+      const { messageId, userId, emoji, icon } = data;
 
-      if (!messageId || !userId || !emoji) {
-        return socket.emit('error', { message: 'messageId, userId, and emoji are required' });
+      if (!messageId || !userId || (!emoji && !icon)) {
+        return socket.emit('error', { message: 'messageId, userId, and either emoji or icon are required' });
       }
 
       const { message, conversation } = await this.findMessageConversation(messageId);
@@ -201,13 +201,14 @@ class ChatController {
         return socket.emit('error', { message: 'User is not a participant of this conversation' });
       }
 
-      // Check if user already reacted with this emoji
+      // Check if user already reacted with this emoji or icon
       const existingReactionIndex = message.reactions.findIndex(
-        r => r.userId.toString() === userId.toString() && r.emoji === emoji
+        r => r.userId.toString() === userId.toString() && 
+             ((emoji && r.emoji === emoji) || (icon && r.icon === icon))
       );
 
       if (existingReactionIndex === -1) {
-        message.reactions.push({ userId, emoji });
+        message.reactions.push({ userId, emoji, icon });
         await message.save();
       }
 
@@ -215,6 +216,7 @@ class ChatController {
         messageId,
         userId,
         emoji,
+        icon,
         reactions: message.reactions
       });
     } catch (error) {
@@ -225,10 +227,10 @@ class ChatController {
 
   async handleRemoveReaction(socket, data) {
     try {
-      const { messageId, userId, emoji } = data;
+      const { messageId, userId, emoji, icon } = data;
 
-      if (!messageId || !userId || !emoji) {
-        return socket.emit('error', { message: 'messageId, userId, and emoji are required' });
+      if (!messageId || !userId || (!emoji && !icon)) {
+        return socket.emit('error', { message: 'messageId, userId, and either emoji or icon are required' });
       }
 
       const { message, conversation } = await this.findMessageConversation(messageId);
@@ -247,7 +249,8 @@ class ChatController {
 
       const initialLength = message.reactions.length;
       message.reactions = message.reactions.filter(
-        r => !(r.userId.toString() === userId.toString() && r.emoji === emoji)
+        r => !(r.userId.toString() === userId.toString() && 
+               ((emoji && r.emoji === emoji) || (icon && r.icon === icon)))
       );
 
       if (message.reactions.length !== initialLength) {
@@ -258,6 +261,7 @@ class ChatController {
         messageId,
         userId,
         emoji,
+        icon,
         reactions: message.reactions
       });
     } catch (error) {
