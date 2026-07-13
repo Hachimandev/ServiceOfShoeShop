@@ -46,7 +46,11 @@ const messageSchema = new mongoose.Schema({
     },
     emoji: {
       type: String,
-      required: true
+      required: false
+    },
+    icon: {
+      type: String,
+      required: false
     }
   }]
 }, { timestamps: true });
