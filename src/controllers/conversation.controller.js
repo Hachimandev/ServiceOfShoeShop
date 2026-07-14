@@ -373,10 +373,24 @@ class ConversationController {
   async getMessages(req, res) {
     try {
       const { conversationId } = req.params;
+      const { limit = 20, cursor } = req.query;
 
-      const messages = await Message.find({ conversationId })
+      const query = { conversationId };
+
+      if (cursor) {
+        const cursorMessage = await Message.findById(cursor);
+        if (cursorMessage) {
+          query.createdAt = { $lt: cursorMessage.createdAt };
+        }
+      }
+
+      let messages = await Message.find(query)
         .populate('senderId', 'username')
-        .sort({ createdAt: 1 });
+        .sort({ createdAt: -1 })
+        .limit(parseInt(limit, 10));
+
+      // Sort chronologically for frontend rendering
+      messages = messages.reverse();
 
       res.status(200).json(messages);
     } catch (error) {
