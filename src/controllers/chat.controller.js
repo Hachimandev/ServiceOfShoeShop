@@ -132,6 +132,14 @@ class ChatController {
         message.pinnedBy = userId;
         message.pinnedAt = new Date();
         await message.save();
+
+        if (!conversation.pinnedMessages) {
+          conversation.pinnedMessages = [];
+        }
+        if (!conversation.pinnedMessages.includes(message._id)) {
+          conversation.pinnedMessages.push(message._id);
+          await conversation.save();
+        }
       }
 
       const pinnedMessage = await this.populatePinnedMessage(message);
@@ -169,6 +177,13 @@ class ChatController {
         message.pinnedBy = null;
         message.pinnedAt = null;
         await message.save();
+
+        if (conversation.pinnedMessages) {
+          conversation.pinnedMessages = conversation.pinnedMessages.filter(
+            id => id.toString() !== message._id.toString()
+          );
+          await conversation.save();
+        }
       }
 
       const unpinnedMessage = await this.populatePinnedMessage(message);

@@ -133,6 +133,13 @@ class ConversationController {
       })
       .populate('participants', 'username')
       .populate('lastMessage')
+      .populate({
+        path: 'pinnedMessages',
+        populate: [
+          { path: 'senderId', select: 'username' },
+          { path: 'pinnedBy', select: 'username' }
+        ]
+      })
       .sort({ updatedAt: -1 });
 
       res.status(200).json(conversations);
@@ -428,6 +435,15 @@ class ConversationController {
         message.pinnedBy = userId;
         message.pinnedAt = new Date();
         await message.save();
+
+        if (!conversation.pinnedMessages) {
+          conversation.pinnedMessages = [];
+        }
+        // Avoid duplicates
+        if (!conversation.pinnedMessages.includes(message._id)) {
+          conversation.pinnedMessages.push(message._id);
+          await conversation.save();
+        }
       }
 
       const pinnedMessage = await this.populatePinnedMessage(message);
@@ -470,6 +486,13 @@ class ConversationController {
         message.pinnedBy = null;
         message.pinnedAt = null;
         await message.save();
+
+        if (conversation.pinnedMessages) {
+          conversation.pinnedMessages = conversation.pinnedMessages.filter(
+            id => id.toString() !== message._id.toString()
+          );
+          await conversation.save();
+        }
       }
 
       const unpinnedMessage = await this.populatePinnedMessage(message);
@@ -493,7 +516,14 @@ class ConversationController {
         return res.status(400).json({ message: 'userId query parameter is required' });
       }
 
-      const conversation = await Conversation.findById(conversationId);
+      const conversation = await Conversation.findById(conversationId)
+        .populate({
+          path: 'pinnedMessages',
+          populate: [
+            { path: 'senderId', select: 'username' },
+            { path: 'pinnedBy', select: 'username' }
+          ]
+        });
 
       if (!conversation) {
         return res.status(404).json({ message: 'Conversation not found' });
@@ -503,15 +533,8 @@ class ConversationController {
         return res.status(403).json({ message: 'User is not a participant of this conversation' });
       }
 
-      const messages = await Message.find({
-        conversationId,
-        isPinned: true
-      })
-        .populate('senderId', 'username')
-        .populate('pinnedBy', 'username')
-        .sort({ pinnedAt: -1 });
-
-      res.status(200).json(messages);
+      // Return the pinnedMessages array from the conversation directly
+      res.status(200).json(conversation.pinnedMessages || []);
     } catch (error) {
       console.error('Error in getPinnedMessages:', error);
       res.status(500).json({ error: error.message });

@@ -22,7 +22,11 @@ const conversationSchema = new mongoose.Schema({
   lastMessage: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Message'
-  }
+  },
+  pinnedMessages: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Message'
+  }]
 }, { timestamps: true });
 
 const Conversation = mongoose.model('Conversation', conversationSchema);
