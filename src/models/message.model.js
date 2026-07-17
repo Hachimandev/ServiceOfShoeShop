@@ -18,7 +18,11 @@ const messageSchema = new mongoose.Schema({
   },
   message: {
     type: String,
-    required: true
+    required: false
+  },
+  images: {
+    type: [String],
+    default: []
   },
   type: {
     type: String,

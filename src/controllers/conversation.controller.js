@@ -252,43 +252,41 @@ class ConversationController {
         return res.status(400).json({ message: 'Dữ liệu cuộc hội thoại không hợp lệ' });
       }
 
-      const newMessages = [];
+      const imageUrls = [];
 
       for (const file of files) {
         // Upload image to S3
         const imageUrl = await uploadToS3(file.buffer, file.originalname, file.mimetype);
-
-        // Save to MongoDB
-        const newMessage = await Message.create({
-          senderId,
-          receiverId: receiverId || null,
-          message: imageUrl,
-          type: 'image',
-          conversationId: targetConversationId
-        });
-        
-        newMessages.push(newMessage);
+        imageUrls.push(imageUrl);
       }
+
+      // Save to MongoDB
+      const newMessage = await Message.create({
+        senderId,
+        receiverId: receiverId || null,
+        message: req.body.message || '', // Cho phép gửi kèm text (caption)
+        images: imageUrls,
+        type: 'image',
+        conversationId: targetConversationId
+      });
 
       // Update the last message of the conversation
       await Conversation.findByIdAndUpdate(targetConversationId, {
-        lastMessage: newMessages[newMessages.length - 1]._id
+        lastMessage: newMessage._id
       });
 
       // Emit messages
-      for (const newMessage of newMessages) {
-        if (targetConversation && targetConversation.type === 'group') {
-          targetConversation.participants.forEach(participantId => {
-            if (participantId.toString() !== senderId.toString() && req.io) {
-              req.io.to(participantId.toString()).emit('chat_message', newMessage);
-            }
-          });
-        } else if (receiverId && req.io) {
-          req.io.to(receiverId.toString()).emit('chat_message', newMessage);
-        }
+      if (targetConversation && targetConversation.type === 'group') {
+        targetConversation.participants.forEach(participantId => {
+          if (participantId.toString() !== senderId.toString() && req.io) {
+            req.io.to(participantId.toString()).emit('chat_message', newMessage);
+          }
+        });
+      } else if (receiverId && req.io) {
+        req.io.to(receiverId.toString()).emit('chat_message', newMessage);
       }
 
-      res.status(201).json(newMessages.length === 1 ? newMessages[0] : newMessages);
+      res.status(201).json(newMessage);
     } catch (error) {
       console.error('Error in sendImageMessage:', error);
       res.status(500).json({ error: error.message });
