@@ -47,7 +47,7 @@ class ChatController {
     try {
       console.log(`Message from ${socket.id}:`, data);
       
-      const { senderId, receiverId, message, conversationId, type = 'text' } = data;
+      const { senderId, receiverId, message, images, conversationId, type = 'text' } = data;
       let targetConversationId = conversationId;
       let targetConversation = null;
 
@@ -77,6 +77,7 @@ class ChatController {
         senderId,
         receiverId: receiverId || null,
         message,
+        images: images || [],
         type,
         conversationId: targetConversationId
       });
