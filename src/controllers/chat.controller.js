@@ -286,6 +286,46 @@ class ChatController {
     }
   }
 
+  async handleUnsendMessage(socket, data) {
+    try {
+      const { messageId, userId } = data;
+
+      if (!messageId || !userId) {
+        return socket.emit('error', { message: 'messageId and userId are required' });
+      }
+
+      const { message, conversation } = await this.findMessageConversation(messageId);
+
+      if (!message) {
+        return socket.emit('error', { message: 'Message not found' });
+      }
+
+      if (!conversation) {
+        return socket.emit('error', { message: 'Conversation not found' });
+      }
+
+      if (message.senderId.toString() !== userId.toString()) {
+        return socket.emit('error', { message: 'Only the sender can unsend this message' });
+      }
+
+      if (message.isUnsent) {
+        return socket.emit('error', { message: 'Message is already unsent' });
+      }
+
+      message.isUnsent = true;
+      await message.save();
+
+      this.emitToConversation(conversation, 'message_unsent', {
+        messageId: message._id,
+        conversationId: conversation._id,
+        isUnsent: true
+      });
+    } catch (error) {
+      console.error('Error unsending message:', error);
+      socket.emit('error', { message: 'Failed to unsend message' });
+    }
+  }
+
   handleDisconnect(socket) {
     console.log(`User disconnected: ${socket.id}`);
   }

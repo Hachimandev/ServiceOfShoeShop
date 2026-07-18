@@ -21,6 +21,7 @@ module.exports = (io) => {
   router.patch('/message/:messageId/unpin', conversationController.unpinMessage);
   router.post('/message/:messageId/reaction', conversationController.addReaction);
   router.delete('/message/:messageId/reaction', conversationController.removeReaction);
+  router.patch('/message/:messageId/unsend', conversationController.unsendMessage);
   router.get('/:conversationId/pinned-messages', conversationController.getPinnedMessages);
   router.get('/:conversationId/messages', conversationController.getMessages);
 
