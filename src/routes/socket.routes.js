@@ -18,6 +18,10 @@ module.exports = (io) => {
       chatController.handleChatMessage(socket, data);
     });
 
+    socket.on('unsend_message', (data) => {
+      chatController.handleUnsendMessage(socket, data);
+    });
+
     socket.on('pin_message', (data) => {
       chatController.handlePinMessage(socket, data);
     });
