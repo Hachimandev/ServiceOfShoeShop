@@ -56,7 +56,11 @@ const messageSchema = new mongoose.Schema({
       type: String,
       required: false
     }
-  }]
+  }],
+  isUnsent: {
+    type: Boolean,
+    default: false
+  }
 }, { timestamps: true });
 
 messageSchema.index({ conversationId: 1, isPinned: 1, pinnedAt: -1 });

@@ -10,6 +10,7 @@ class ConversationController {
     this.getPinnedMessages = this.getPinnedMessages.bind(this);
     this.addReaction = this.addReaction.bind(this);
     this.removeReaction = this.removeReaction.bind(this);
+    this.unsendMessage = this.unsendMessage.bind(this);
   }
 
   isConversationParticipant(conversation, userId) {
@@ -634,6 +635,50 @@ class ConversationController {
       res.status(200).json(message);
     } catch (error) {
       console.error('Error in removeReaction:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Unsend a message
+  async unsendMessage(req, res) {
+    try {
+      const { messageId } = req.params;
+      const { userId } = req.body;
+
+      if (!userId) {
+        return res.status(400).json({ message: 'userId is required' });
+      }
+
+      const { message, conversation } = await this.findMessageConversation(messageId);
+
+      if (!message) {
+        return res.status(404).json({ message: 'Message not found' });
+      }
+
+      if (!conversation) {
+        return res.status(404).json({ message: 'Conversation not found' });
+      }
+
+      if (message.senderId.toString() !== userId.toString()) {
+        return res.status(403).json({ message: 'Only the sender can unsend this message' });
+      }
+
+      if (message.isUnsent) {
+        return res.status(400).json({ message: 'Message is already unsent' });
+      }
+
+      message.isUnsent = true;
+      await message.save();
+
+      this.emitToConversation(req.io, conversation, 'message_unsent', {
+        messageId: message._id,
+        conversationId: conversation._id,
+        isUnsent: true
+      });
+
+      res.status(200).json(message);
+    } catch (error) {
+      console.error('Error in unsendMessage:', error);
       res.status(500).json({ error: error.message });
     }
   }
