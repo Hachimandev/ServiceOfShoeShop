@@ -11,6 +11,7 @@ class ConversationController {
     this.addReaction = this.addReaction.bind(this);
     this.removeReaction = this.removeReaction.bind(this);
     this.unsendMessage = this.unsendMessage.bind(this);
+    this.deleteMessage = this.deleteMessage.bind(this);
   }
 
   isConversationParticipant(conversation, userId) {
@@ -679,6 +680,64 @@ class ConversationController {
       res.status(200).json(message);
     } catch (error) {
       console.error('Error in unsendMessage:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Delete a message (Hard delete)
+  async deleteMessage(req, res) {
+    try {
+      const { messageId } = req.params;
+      const { userId } = req.body;
+
+      if (!userId) {
+        return res.status(400).json({ message: 'userId is required' });
+      }
+
+      const { message, conversation } = await this.findMessageConversation(messageId);
+
+      if (!message) {
+        return res.status(404).json({ message: 'Message not found' });
+      }
+
+      if (!conversation) {
+        return res.status(404).json({ message: 'Conversation not found' });
+      }
+
+      if (message.senderId.toString() !== userId.toString()) {
+        return res.status(403).json({ message: 'Only the sender can delete this message' });
+      }
+
+      // Check if it's the last message of the conversation
+      const isLastMessage = conversation.lastMessage && conversation.lastMessage.toString() === message._id.toString();
+
+      await Message.findByIdAndDelete(messageId);
+
+      // If it was the last message, find the new last message
+      if (isLastMessage) {
+        const newLastMessage = await Message.findOne({ conversationId: conversation._id })
+          .sort({ createdAt: -1 });
+        
+        conversation.lastMessage = newLastMessage ? newLastMessage._id : null;
+        await conversation.save();
+      }
+
+      // Remove from pinnedMessages if it was pinned
+      if (message.isPinned && conversation.pinnedMessages) {
+        conversation.pinnedMessages = conversation.pinnedMessages.filter(
+          id => id.toString() !== message._id.toString()
+        );
+        await conversation.save();
+      }
+
+      this.emitToConversation(req.io, conversation, 'message_deleted', {
+        messageId: message._id,
+        conversationId: conversation._id
+      });
+
+      res.status(200).json({ message: 'Message deleted successfully', messageId: message._id });
+    } catch (error) {
+      console.error('Error in deleteMessage:', error);
       res.status(500).json({ error: error.message });
     }
   }
