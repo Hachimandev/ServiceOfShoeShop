@@ -154,7 +154,7 @@ class ConversationController {
   // Send a message via REST
   async sendMessage(req, res) {
     try {
-      const { senderId, receiverId, message, conversationId } = req.body;
+      const { senderId, receiverId, message, conversationId, replyTo } = req.body;
       
       if (message && message.length > 1000) {
         return res.status(400).json({ message: 'Tin nhắn vượt quá giới hạn 1000 ký tự' });
@@ -190,8 +190,18 @@ class ConversationController {
         senderId,
         receiverId: receiverId || null,
         message,
-        conversationId: targetConversationId
+        conversationId: targetConversationId,
+        replyTo: replyTo || null
       });
+
+      let messageToEmit = newMessage;
+      if (replyTo) {
+        messageToEmit = await newMessage.populate({
+          path: 'replyTo',
+          select: 'message type senderId images isUnsent',
+          populate: { path: 'senderId', select: 'username' }
+        });
+      }
 
       // Update the last message of the conversation
       await Conversation.findByIdAndUpdate(targetConversationId, {
@@ -202,14 +212,14 @@ class ConversationController {
       if (targetConversation && targetConversation.type === 'group') {
         targetConversation.participants.forEach(participantId => {
           if (participantId.toString() !== senderId.toString() && req.io) {
-            req.io.to(participantId.toString()).emit('chat_message', newMessage);
+            req.io.to(participantId.toString()).emit('chat_message', messageToEmit);
           }
         });
       } else if (receiverId && req.io) {
-        req.io.to(receiverId.toString()).emit('chat_message', newMessage);
+        req.io.to(receiverId.toString()).emit('chat_message', messageToEmit);
       }
 
-      res.status(201).json(newMessage);
+      res.status(201).json(messageToEmit);
     } catch (error) {
       console.error('Error in sendMessage:', error);
       res.status(500).json({ error: error.message });
@@ -219,7 +229,7 @@ class ConversationController {
   // Send an image message via REST
   async sendImageMessage(req, res) {
     try {
-      const { senderId, receiverId, conversationId } = req.body;
+      const { senderId, receiverId, conversationId, replyTo } = req.body;
       const files = req.files || (req.file ? [req.file] : []);
 
       if (files.length === 0) {
@@ -269,8 +279,18 @@ class ConversationController {
         message: req.body.message || '', // Cho phép gửi kèm text (caption)
         images: imageUrls,
         type: 'image',
-        conversationId: targetConversationId
+        conversationId: targetConversationId,
+        replyTo: replyTo || null
       });
+
+      let messageToEmit = newMessage;
+      if (replyTo) {
+        messageToEmit = await newMessage.populate({
+          path: 'replyTo',
+          select: 'message type senderId images isUnsent',
+          populate: { path: 'senderId', select: 'username' }
+        });
+      }
 
       // Update the last message of the conversation
       await Conversation.findByIdAndUpdate(targetConversationId, {
@@ -281,14 +301,14 @@ class ConversationController {
       if (targetConversation && targetConversation.type === 'group') {
         targetConversation.participants.forEach(participantId => {
           if (participantId.toString() !== senderId.toString() && req.io) {
-            req.io.to(participantId.toString()).emit('chat_message', newMessage);
+            req.io.to(participantId.toString()).emit('chat_message', messageToEmit);
           }
         });
       } else if (receiverId && req.io) {
-        req.io.to(receiverId.toString()).emit('chat_message', newMessage);
+        req.io.to(receiverId.toString()).emit('chat_message', messageToEmit);
       }
 
-      res.status(201).json(newMessage);
+      res.status(201).json(messageToEmit);
     } catch (error) {
       console.error('Error in sendImageMessage:', error);
       res.status(500).json({ error: error.message });
@@ -298,7 +318,7 @@ class ConversationController {
   // Get messages for a conversation
   async sendFileMessage(req, res) {
     try {
-      const { senderId, receiverId, conversationId } = req.body;
+      const { senderId, receiverId, conversationId, replyTo } = req.body;
       const files = req.files || (req.file ? [req.file] : []);
 
       if (files.length === 0) {
@@ -345,10 +365,21 @@ class ConversationController {
           receiverId: receiverId || null,
           message: fileUrl,
           type: 'file',
-          conversationId: targetConversationId
+          conversationId: targetConversationId,
+          replyTo: replyTo || null
         });
+
+        let messageToEmit = newMessage;
+        if (replyTo) {
+          messageToEmit = await newMessage.populate({
+            path: 'replyTo',
+            select: 'message type senderId images isUnsent',
+            populate: { path: 'senderId', select: 'username' }
+          });
+        }
         
-        newMessages.push({ ...newMessage._doc, originalName: file.originalname });
+        const messageObject = messageToEmit.toObject ? messageToEmit.toObject() : messageToEmit._doc;
+        newMessages.push({ ...messageObject, originalName: file.originalname });
       }
 
       // Update the last message of the conversation
@@ -393,6 +424,11 @@ class ConversationController {
 
       let messages = await Message.find(query)
         .populate('senderId', 'username')
+        .populate({
+          path: 'replyTo',
+          select: 'message type senderId images isUnsent',
+          populate: { path: 'senderId', select: 'username' }
+        })
         .sort({ createdAt: -1 })
         .limit(parseInt(limit, 10));
 
