@@ -47,7 +47,7 @@ class ChatController {
     try {
       console.log(`Message from ${socket.id}:`, data);
       
-      const { senderId, receiverId, message, images, conversationId, type = 'text' } = data;
+      const { senderId, receiverId, message, images, conversationId, type = 'text', replyTo } = data;
       let targetConversationId = conversationId;
       let targetConversation = null;
 
@@ -79,8 +79,18 @@ class ChatController {
         message,
         images: images || [],
         type,
-        conversationId: targetConversationId
+        conversationId: targetConversationId,
+        replyTo: replyTo || null
       });
+
+      let messageToEmit = newMessage;
+      if (replyTo) {
+        messageToEmit = await newMessage.populate({
+          path: 'replyTo',
+          select: 'message type senderId images isUnsent',
+          populate: { path: 'senderId', select: 'username' }
+        });
+      }
 
       // Update the last message of the conversation
       await Conversation.findByIdAndUpdate(targetConversationId, {
@@ -91,14 +101,14 @@ class ChatController {
       if (targetConversation && targetConversation.type === 'group') {
         targetConversation.participants.forEach(participantId => {
           if (participantId.toString() !== senderId.toString()) {
-            this.io.to(participantId.toString()).emit('chat_message', newMessage);
+            this.io.to(participantId.toString()).emit('chat_message', messageToEmit);
           }
         });
       } else if (receiverId) {
-        this.io.to(receiverId).emit('chat_message', newMessage);
+        this.io.to(receiverId).emit('chat_message', messageToEmit);
       }
       
-      socket.emit('chat_message', newMessage);
+      socket.emit('chat_message', messageToEmit);
 
     } catch (error) {
       console.error('Error saving message:', error);

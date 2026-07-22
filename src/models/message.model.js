@@ -60,6 +60,11 @@ const messageSchema = new mongoose.Schema({
   isUnsent: {
     type: Boolean,
     default: false
+  },
+  replyTo: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Message',
+    default: null
   }
 }, { timestamps: true });
 
