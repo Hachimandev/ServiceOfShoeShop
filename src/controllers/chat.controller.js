@@ -116,6 +116,86 @@ class ChatController {
     }
   }
 
+  async handleForwardMessage(socket, data) {
+    try {
+      const { senderId, messageId, targetConversationIds = [], targetReceiverIds = [] } = data;
+
+      if (!senderId || !messageId || (targetConversationIds.length === 0 && targetReceiverIds.length === 0)) {
+        return socket.emit('error', { message: 'Invalid forward data' });
+      }
+
+      const originalMessage = await Message.findById(messageId);
+      if (!originalMessage) {
+        return socket.emit('error', { message: 'Original message not found' });
+      }
+
+      // Helper to process forward to a specific target
+      const forwardToTarget = async (conversationId, receiverId) => {
+        let targetConversationId = conversationId;
+        let targetConversation = null;
+
+        if (targetConversationId) {
+          targetConversation = await Conversation.findById(targetConversationId);
+        } else if (senderId && receiverId) {
+          targetConversation = await Conversation.findOne({
+            type: '1vs1',
+            participants: { $all: [senderId, receiverId], $size: 2 }
+          });
+
+          if (!targetConversation) {
+            targetConversation = await Conversation.create({
+              participants: [senderId, receiverId],
+              type: '1vs1'
+            });
+          }
+          targetConversationId = targetConversation._id;
+        }
+
+        if (!targetConversationId) return;
+
+        const newMessage = await Message.create({
+          senderId,
+          receiverId: receiverId || null,
+          message: originalMessage.message,
+          images: originalMessage.images,
+          type: originalMessage.type,
+          conversationId: targetConversationId,
+          isForwarded: true
+        });
+
+        await Conversation.findByIdAndUpdate(targetConversationId, {
+          lastMessage: newMessage._id
+        });
+
+        if (targetConversation && targetConversation.type === 'group') {
+          targetConversation.participants.forEach(participantId => {
+            if (participantId.toString() !== senderId.toString()) {
+              this.io.to(participantId.toString()).emit('chat_message', newMessage);
+            }
+          });
+        } else if (receiverId) {
+          this.io.to(receiverId.toString()).emit('chat_message', newMessage);
+        }
+        
+        // Notify the sender
+        socket.emit('chat_message', newMessage);
+      };
+
+      for (const convId of targetConversationIds) {
+        await forwardToTarget(convId, null);
+      }
+
+      for (const recId of targetReceiverIds) {
+        await forwardToTarget(null, recId);
+      }
+
+      socket.emit('forward_message_success', { message: 'Message forwarded successfully' });
+    } catch (error) {
+      console.error('Error forwarding message:', error);
+      socket.emit('error', { message: 'Failed to forward message' });
+    }
+  }
+
   async handlePinMessage(socket, data) {
     try {
       const { messageId, userId } = data;

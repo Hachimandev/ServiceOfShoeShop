@@ -18,6 +18,10 @@ module.exports = (io) => {
       chatController.handleChatMessage(socket, data);
     });
 
+    socket.on('forward_message', (data) => {
+      chatController.handleForwardMessage(socket, data);
+    });
+
     socket.on('unsend_message', (data) => {
       chatController.handleUnsendMessage(socket, data);
     });
