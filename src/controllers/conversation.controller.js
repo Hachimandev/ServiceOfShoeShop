@@ -407,6 +407,88 @@ class ConversationController {
     }
   }
 
+  // Forward a message
+  async forwardMessage(req, res) {
+    try {
+      const { senderId, messageId, targetConversationIds = [], targetReceiverIds = [] } = req.body;
+
+      if (!senderId || !messageId || (targetConversationIds.length === 0 && targetReceiverIds.length === 0)) {
+        return res.status(400).json({ message: 'Invalid forward data' });
+      }
+
+      const originalMessage = await Message.findById(messageId);
+      if (!originalMessage) {
+        return res.status(404).json({ message: 'Original message not found' });
+      }
+
+      const forwardedMessages = [];
+
+      // Helper to process forward to a specific target
+      const forwardToTarget = async (conversationId, receiverId) => {
+        let targetConversationId = conversationId;
+        let targetConversation = null;
+
+        if (targetConversationId) {
+          targetConversation = await Conversation.findById(targetConversationId);
+        } else if (senderId && receiverId) {
+          targetConversation = await Conversation.findOne({
+            type: '1vs1',
+            participants: { $all: [senderId, receiverId], $size: 2 }
+          });
+
+          if (!targetConversation) {
+            targetConversation = await Conversation.create({
+              participants: [senderId, receiverId],
+              type: '1vs1'
+            });
+          }
+          targetConversationId = targetConversation._id;
+        }
+
+        if (!targetConversationId) return;
+
+        const newMessage = await Message.create({
+          senderId,
+          receiverId: receiverId || null,
+          message: originalMessage.message,
+          images: originalMessage.images,
+          type: originalMessage.type,
+          conversationId: targetConversationId,
+          isForwarded: true
+        });
+
+        await Conversation.findByIdAndUpdate(targetConversationId, {
+          lastMessage: newMessage._id
+        });
+
+        if (targetConversation && targetConversation.type === 'group') {
+          targetConversation.participants.forEach(participantId => {
+            if (participantId.toString() !== senderId.toString() && req.io) {
+              req.io.to(participantId.toString()).emit('chat_message', newMessage);
+            }
+          });
+        } else if (receiverId && req.io) {
+          req.io.to(receiverId.toString()).emit('chat_message', newMessage);
+        }
+        
+        forwardedMessages.push(newMessage);
+      };
+
+      for (const convId of targetConversationIds) {
+        await forwardToTarget(convId, null);
+      }
+
+      for (const recId of targetReceiverIds) {
+        await forwardToTarget(null, recId);
+      }
+
+      res.status(201).json({ message: 'Message forwarded successfully', forwardedMessages });
+    } catch (error) {
+      console.error('Error in forwardMessage:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
   // Get messages for a conversation
   async getMessages(req, res) {
     try {
