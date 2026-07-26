@@ -17,6 +17,7 @@ module.exports = (io) => {
   router.post('/message', conversationController.sendMessage);
   router.post('/message/image', uploadImage.array('image', 5), handleUploadError, conversationController.sendImageMessage);
   router.post('/message/file', uploadFile.array('file', 5), handleUploadError, conversationController.sendFileMessage);
+  router.post('/message/forward', conversationController.forwardMessage);
   router.patch('/message/:messageId/pin', conversationController.pinMessage);
   router.patch('/message/:messageId/unpin', conversationController.unpinMessage);
   router.post('/message/:messageId/reaction', conversationController.addReaction);
