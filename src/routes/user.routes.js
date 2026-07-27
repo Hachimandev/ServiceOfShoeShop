@@ -15,6 +15,9 @@ module.exports = (io) => {
   router.post('/friend-request', userController.sendFriendRequest);
   router.post('/friend-request/respond', userController.respondToFriendRequest);
   router.get('/:userId/friends', userController.getFriends);
+  
+  router.patch('/:userId/conversations/:conversationId/pin', userController.pinConversation);
+  router.patch('/:userId/conversations/:conversationId/unpin', userController.unpinConversation);
 
   return router;
 };

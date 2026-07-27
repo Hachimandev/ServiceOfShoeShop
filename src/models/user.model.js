@@ -9,6 +9,10 @@ const userSchema = new mongoose.Schema({
   friends: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
+  }],
+  pinnedConversations: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Conversation'
   }]
 }, { timestamps: true });
 
