@@ -118,6 +118,48 @@ class UserController {
       res.status(500).json({ error: error.message });
     }
   }
+
+  // Pin a conversation
+  async pinConversation(req, res) {
+    try {
+      const { userId, conversationId } = req.params;
+      const user = await User.findById(userId);
+      if (!user) return res.status(404).json({ message: 'User not found' });
+
+      if (!user.pinnedConversations) {
+        user.pinnedConversations = [];
+      }
+
+      if (!user.pinnedConversations.includes(conversationId)) {
+        user.pinnedConversations.push(conversationId);
+        await user.save();
+      }
+
+      res.status(200).json(user.pinnedConversations);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Unpin a conversation
+  async unpinConversation(req, res) {
+    try {
+      const { userId, conversationId } = req.params;
+      const user = await User.findById(userId);
+      if (!user) return res.status(404).json({ message: 'User not found' });
+
+      if (user.pinnedConversations) {
+        user.pinnedConversations = user.pinnedConversations.filter(
+          id => id.toString() !== conversationId.toString()
+        );
+        await user.save();
+      }
+
+      res.status(200).json(user.pinnedConversations);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
 }
 
 module.exports = new UserController();
