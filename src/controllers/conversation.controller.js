@@ -130,7 +130,12 @@ class ConversationController {
     try {
       const { userId } = req.params;
 
-      const conversations = await Conversation.find({
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      let conversations = await Conversation.find({
         participants: userId
       })
       .populate('participants', 'username')
@@ -144,7 +149,14 @@ class ConversationController {
       })
       .sort({ updatedAt: -1 });
 
-      res.status(200).json(conversations);
+      const pinnedConversations = user.pinnedConversations || [];
+      const result = conversations.map(conv => {
+        const convObj = conv.toObject ? conv.toObject() : conv._doc;
+        convObj.isPinned = pinnedConversations.some(id => id.toString() === conv._id.toString());
+        return convObj;
+      });
+
+      res.status(200).json(result);
     } catch (error) {
       console.error('Error in getUserConversations:', error);
       res.status(500).json({ error: error.message });
