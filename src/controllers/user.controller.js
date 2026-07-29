@@ -123,17 +123,14 @@ class UserController {
   async pinConversation(req, res) {
     try {
       const { userId, conversationId } = req.params;
-      const user = await User.findById(userId);
+      
+      const user = await User.findByIdAndUpdate(
+        userId,
+        { $addToSet: { pinnedConversations: conversationId } },
+        { new: true }
+      );
+
       if (!user) return res.status(404).json({ message: 'User not found' });
-
-      if (!user.pinnedConversations) {
-        user.pinnedConversations = [];
-      }
-
-      if (!user.pinnedConversations.includes(conversationId)) {
-        user.pinnedConversations.push(conversationId);
-        await user.save();
-      }
 
       res.status(200).json(user.pinnedConversations);
     } catch (error) {
@@ -145,15 +142,14 @@ class UserController {
   async unpinConversation(req, res) {
     try {
       const { userId, conversationId } = req.params;
-      const user = await User.findById(userId);
-      if (!user) return res.status(404).json({ message: 'User not found' });
+      
+      const user = await User.findByIdAndUpdate(
+        userId,
+        { $pull: { pinnedConversations: conversationId } },
+        { new: true }
+      );
 
-      if (user.pinnedConversations) {
-        user.pinnedConversations = user.pinnedConversations.filter(
-          id => id.toString() !== conversationId.toString()
-        );
-        await user.save();
-      }
+      if (!user) return res.status(404).json({ message: 'User not found' });
 
       res.status(200).json(user.pinnedConversations);
     } catch (error) {
