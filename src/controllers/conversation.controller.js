@@ -125,6 +125,74 @@ class ConversationController {
     }
   }
 
+  // Add members to a group conversation
+  async addMembers(req, res) {
+    try {
+      const { conversationId } = req.params;
+      const { userId, newMemberIds } = req.body;
+
+      if (!userId || !newMemberIds || !Array.isArray(newMemberIds) || newMemberIds.length === 0) {
+        return res.status(400).json({ message: 'userId and newMemberIds (array of IDs) are required' });
+      }
+
+      const conversation = await Conversation.findById(conversationId);
+
+      if (!conversation) {
+        return res.status(404).json({ message: 'Conversation not found' });
+      }
+
+      if (conversation.type !== 'group') {
+        return res.status(400).json({ message: 'Can only add members to a group conversation' });
+      }
+
+      // Allow any participant to add, or restrict to admin. Let's restrict to admin or allow if they are a participant.
+      // Usually, in group chats, any member might add if settings allow, but standard is admin or any member.
+      // Let's assume any participant can add new members for now, or just admin.
+      // We will allow admin or any current participant.
+      const isParticipant = conversation.participants.some(participantId => participantId.toString() === userId.toString());
+      if (!isParticipant) {
+        return res.status(403).json({ message: 'User is not a participant of this conversation' });
+      }
+
+      // Check if new members exist
+      const users = await User.find({ _id: { $in: newMemberIds } });
+      if (users.length !== newMemberIds.length) {
+        return res.status(404).json({ message: 'One or more new members not found' });
+      }
+
+      // Filter out members who are already in the conversation
+      const currentParticipantStrings = conversation.participants.map(p => p.toString());
+      const membersToAdd = newMemberIds.filter(id => !currentParticipantStrings.includes(id.toString()));
+
+      if (membersToAdd.length === 0) {
+        return res.status(400).json({ message: 'All provided members are already in the conversation' });
+      }
+
+      // Add new members
+      conversation.participants.push(...membersToAdd);
+      await conversation.save();
+
+      await conversation.populate('participants', 'username');
+
+      // Emit event to all participants
+      if (req.io) {
+        conversation.participants.forEach(participantId => {
+          req.io.to(participantId.toString()).emit('members_added', {
+            conversationId,
+            addedBy: userId,
+            newMembers: users.filter(u => membersToAdd.includes(u._id.toString())).map(u => ({ _id: u._id, username: u.username })),
+            conversation
+          });
+        });
+      }
+
+      res.status(200).json({ message: 'Members added successfully', conversation });
+    } catch (error) {
+      console.error('Error in addMembers:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
   // Get user's conversations
   async getUserConversations(req, res) {
     try {
