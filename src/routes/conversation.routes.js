@@ -13,6 +13,7 @@ module.exports = (io) => {
 
   router.post('/1vs1', conversationController.createOrGet1vs1Conversation);
   router.post('/group', conversationController.createGroupConversation);
+  router.post('/group/:conversationId/members', conversationController.addMembers);
   router.get('/:userId', conversationController.getUserConversations);
   router.post('/message', conversationController.sendMessage);
   router.post('/message/image', uploadImage.array('image', 5), handleUploadError, conversationController.sendImageMessage);
